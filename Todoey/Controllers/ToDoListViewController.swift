@@ -7,18 +7,27 @@
 //
 
 import UIKit
+import CoreData
 
 class ToDoListViewController: UITableViewController {
     
     var itemArray = [Item]()
     
-    let datafilePath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("Items.plist")
+    var selectedCategory : Category? {
+        didSet{
+            loadItems()
+        }
+    }
     
+    let context = (UIApplication.shared
+        .delegate as! AppDelegate).persistentContainer.viewContext
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        print(FileManager.default.urls(for: .documentDirectory, in: .userDomainMask))
 
-        loadItems()
+       // let request : NSFetchRequest<Item> = Item.fetchRequest()
     
     }
     
@@ -67,10 +76,13 @@ class ToDoListViewController: UITableViewController {
         let action = UIAlertAction(title: "Add Item", style: .default) { (action) in
             //Do code for what will happen when user presses Add item button in UI Alert
             
-            let newItem = Item()
-            newItem.title = textfield.text!
-            self.itemArray.append(newItem)
+         
             
+            let newItem = Item(context: self.context)
+            newItem.title = textfield.text!
+            newItem.done = false
+            newItem.parentCategory = self.selectedCategory
+            self.itemArray.append(newItem)
             self.saveItems()
             
         }
@@ -92,17 +104,13 @@ class ToDoListViewController: UITableViewController {
     
     func saveItems(){
         
-        let encoder = PropertyListEncoder()
-        
         do{
             
-            let data = try encoder.encode(self.itemArray)
-            
-            try data.write(to: self.datafilePath!)
+            try context.save()
             
         }catch{
             
-            print("Error encoding item array ,\(error)")
+            print("Error saving context,\(error)")
             
         }
         
@@ -110,14 +118,71 @@ class ToDoListViewController: UITableViewController {
         
     }
     
-    func loadItems(){
-        if let data = try? Data(contentsOf: datafilePath!){
-            let decoder   = PropertyListDecoder()
-            do{
-                itemArray = try decoder.decode([Item].self,from : data)
-            }catch{
-                print("Error decoding item array , \(error)")
+    func loadItems(with request : NSFetchRequest<Item> = Item.fetchRequest(),predicate : NSPredicate? = nil){
+        
+        let categorypredicate = NSPredicate(format: "parentCategory.name MATCHES %@",selectedCategory!.name!)
+
+        if let additionalPredicate = predicate {
+
+            request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [categorypredicate,additionalPredicate])
+        }else{
+
+            request.predicate = categorypredicate
+        }
+
+        do{
+            itemArray = try context.fetch(request)
+        }catch{
+            
+        }
+    
+       
+    }
+    
+  
+    
+}
+
+extension ToDoListViewController : UISearchBarDelegate{
+    
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        
+        let request : NSFetchRequest<Item> = Item.fetchRequest()
+        
+        let predicate = NSPredicate(format: "title CONTAINS [cd] %@ ", searchBar.text!)
+        
+        request.predicate = predicate
+        
+        request.sortDescriptors = [NSSortDescriptor(key: "title", ascending: true)]
+        
+       // loadItems(with: request,predicate: predicate)
+        
+        do{
+            itemArray = try context.fetch(request)
+        }catch{
+            
+        }
+        
+        tableView.reloadData()
+        
+    }
+    
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        
+        if searchBar.text?.count == 0 {
+            
+            loadItems()
+            
+            DispatchQueue.main.async {
+                
+            searchBar.resignFirstResponder()
+                
             }
+            
+            
+            
+        }else{
+            
         }
     }
     
